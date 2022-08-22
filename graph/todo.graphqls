@@ -1,0 +1,26 @@
+# GraphQL schema example
+#
+# https://gqlgen.com/getting-started/
+
+type Todo {
+  id: ID!
+  text: String!
+  done: Boolean!
+  createdAt: Time!
+  updatedAt: Time!
+  deletedAt: Time
+  updatedBy: User!
+}
+
+input NewTodo {
+  text: String!
+}
+
+input Range {
+  from: Time
+  to: Time
+}
+
+input TodoSearch {
+  createdAt: Range
+}

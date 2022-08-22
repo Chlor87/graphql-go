@@ -1,0 +1,38 @@
+schema:
+  - graph/*.graphqls
+
+exec:
+  filename: graph/generated/generated.go
+  package: generated
+
+model:
+  filename: model/models_gen.go
+  package: model
+
+resolver:
+  layout: follow-schema
+  dir: resolvers
+  package: resolvers
+
+autobind:
+#  - "github.com/Chlor87/graphql/model"
+
+models:
+  Todo:
+    model: github.com/Chlor87/graphql/model.Todo
+    fields:
+      updatedBy:
+        resolver: true
+  User:
+    model: github.com/Chlor87/graphql/model.User
+  ID:
+    model:
+      - github.com/99designs/gqlgen/graphql.Int
+      - github.com/99designs/gqlgen/graphql.Int64
+      - github.com/99designs/gqlgen/graphql.Int32
+      - github.com/99designs/gqlgen/graphql.ID
+  Int:
+    model:
+      - github.com/99designs/gqlgen/graphql.Int
+      - github.com/99designs/gqlgen/graphql.Int64
+      - github.com/99designs/gqlgen/graphql.Int32
