@@ -1,18 +1,21 @@
 package main
 
 import (
+	"bytes"
+	"io/fs"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
+	"sync"
 
-	"github.com/99designs/gqlgen/graphql/handler"
-	"github.com/99designs/gqlgen/graphql/playground"
+	"github.com/graph-gophers/graphql-go"
+	"github.com/graph-gophers/graphql-go/relay"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	"github.com/Chlor87/graphql/graph/generated"
-	"github.com/Chlor87/graphql/middleware"
 	"github.com/Chlor87/graphql/model"
 	"github.com/Chlor87/graphql/repo"
 	"github.com/Chlor87/graphql/resolvers"
@@ -24,7 +27,8 @@ const (
 )
 
 var (
-	db *gorm.DB
+	db     *gorm.DB
+	schema *graphql.Schema
 )
 
 func init() {
@@ -33,12 +37,14 @@ func init() {
 		Logger: logger.Default.LogMode(logger.Info),
 	})
 	check(err)
-}
+	s, err := readSchema("graph")
+	check(err)
 
-func check(err error) {
-	if err != nil {
-		log.Fatalln(err)
-	}
+	todoRepo, err := repo.New[model.Todo](db)
+	check(err)
+
+	schema = graphql.MustParseSchema(s, &resolvers.Root{DB: db, TodoRepo: todoRepo})
+	check(err)
 }
 
 func main() {
@@ -47,30 +53,51 @@ func main() {
 		port = defaultPort
 	}
 
-	todoRepo, err := repo.New[model.Todo](db)
-	check(err)
+	http.Handle("/query", &relay.Handler{Schema: schema})
 
-	userRepo, err := repo.New[model.User](db)
-	check(err)
+	// userRepo, err := repo.New[model.User](db)
+	// check(err)
+	log.Printf("starting http service on :%s\n", port)
+	log.Fatalln(http.ListenAndServe(":"+port, nil))
 
-	cfg := generated.Config{
-		Resolvers: &resolvers.Resolver{
-			DB:       db,
-			TodoRepo: todoRepo,
-			UserRepo: userRepo,
-		},
+}
+
+func check(err error) {
+	if err != nil {
+		log.Fatalln(err)
+	}
+}
+
+func readSchema(dir string) (res string, err error) {
+	files, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return
 	}
 
-	srv := handler.NewDefaultServer(generated.NewExecutableSchema(cfg))
-
-	mw := middleware.Build(
-		middleware.AddUser(userRepo),
-		middleware.AddUserLoader(userRepo),
+	var (
+		mu  sync.Mutex
+		wg  sync.WaitGroup
+		tmp bytes.Buffer
 	)
 
-	http.Handle("/", playground.Handler("GraphQL playground", "/query"))
-	http.Handle("/query", mw(srv))
+	for _, f := range files {
+		if f.IsDir() {
+			continue
+		}
+		wg.Add(1)
+		go func(f fs.FileInfo) {
+			defer wg.Done()
+			s, err := ioutil.ReadFile(filepath.Join(dir, f.Name()))
+			// TODO: return err to caller
+			check(err)
+			mu.Lock()
+			_, err = tmp.Write(s)
+			mu.Unlock()
+			check(err)
+		}(f)
+	}
 
-	log.Printf("connect to http://localhost:%s/ for GraphQL playground", port)
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+	wg.Wait()
+
+	return tmp.String(), nil
 }

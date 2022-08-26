@@ -3,6 +3,8 @@ package repo
 import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+
+	"github.com/Chlor87/graphql/model"
 )
 
 type Repo[T any] struct {
@@ -23,7 +25,7 @@ func (r *Repo[T]) Create(in *T) error {
 	return r.DB.Create(in).Error
 }
 
-func (r *Repo[T]) Get(id int) (t *T, err error) {
+func (r *Repo[T]) Get(id model.ID) (t *T, err error) {
 	err = r.DB.First(&t, id).Error
 	return
 }
