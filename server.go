@@ -14,7 +14,6 @@ import (
 	"github.com/graph-gophers/graphql-go/relay"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 
 	"github.com/Chlor87/graphql/model"
 	"github.com/Chlor87/graphql/repo"
@@ -34,16 +33,23 @@ var (
 func init() {
 	var err error
 	db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+		// Logger: logger.Default.LogMode(logger.Info),
 	})
 	check(err)
-	s, err := readSchema("graph")
+	s, err := readSchema("./graph")
 	check(err)
 
 	todoRepo, err := repo.New[model.Todo](db)
 	check(err)
 
-	schema = graphql.MustParseSchema(s, &resolvers.Root{DB: db, TodoRepo: todoRepo})
+	userRepo, err := repo.New[model.User](db)
+	check(err)
+
+	schema = graphql.MustParseSchema(
+		s,
+		resolvers.NewRoot(todoRepo, userRepo),
+		graphql.UseFieldResolvers(),
+	)
 	check(err)
 }
 
@@ -55,8 +61,6 @@ func main() {
 
 	http.Handle("/query", &relay.Handler{Schema: schema})
 
-	// userRepo, err := repo.New[model.User](db)
-	// check(err)
 	log.Printf("starting http service on :%s\n", port)
 	log.Fatalln(http.ListenAndServe(":"+port, nil))
 
@@ -68,6 +72,7 @@ func check(err error) {
 	}
 }
 
+// just to be sure, I know it can be simpler
 func readSchema(dir string) (res string, err error) {
 	files, err := ioutil.ReadDir(dir)
 	if err != nil {
@@ -75,29 +80,47 @@ func readSchema(dir string) (res string, err error) {
 	}
 
 	var (
-		mu  sync.Mutex
-		wg  sync.WaitGroup
-		tmp bytes.Buffer
+		wg                sync.WaitGroup
+		resC, errC, doneC = make(chan []byte), make(chan error), make(chan struct{})
+		tmp               bytes.Buffer
 	)
 
 	for _, f := range files {
-		if f.IsDir() {
+		if f.IsDir() || filepath.Ext(f.Name()) != ".graphqls" {
 			continue
 		}
 		wg.Add(1)
 		go func(f fs.FileInfo) {
 			defer wg.Done()
 			s, err := ioutil.ReadFile(filepath.Join(dir, f.Name()))
-			// TODO: return err to caller
-			check(err)
-			mu.Lock()
-			_, err = tmp.Write(s)
-			mu.Unlock()
-			check(err)
+			if err != nil {
+				errC <- err
+			} else {
+				resC <- s
+			}
 		}(f)
 	}
 
-	wg.Wait()
+	go func() {
+		wg.Wait()
+		close(errC)
+		close(resC)
+		close(doneC)
+	}()
 
-	return tmp.String(), nil
+	for {
+		select {
+		case err := <-errC:
+			if err != nil {
+				return "", err
+			}
+		case s := <-resC:
+			if _, err = tmp.Write(s); err != nil {
+				errC <- err
+			}
+		case <-doneC:
+			return tmp.String(), nil
+		}
+	}
+
 }

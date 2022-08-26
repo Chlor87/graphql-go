@@ -63,7 +63,7 @@ func AddUserLoader(userRepo *repo.Repo[model.User]) func(http.Handler) http.Hand
 					m := make(map[int]*model.User)
 
 					for _, u := range tmp {
-						m[u.ID] = u
+						m[int(u.ID)] = u
 					}
 
 					res := make([]*model.User, len(m))

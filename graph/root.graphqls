@@ -1,13 +1,13 @@
 scalar Time
 
 type Query {
-  todo(id: ID!): Todo!
-  todos: [Todo!]!
+  getTodo(id: ID!): Todo!
+  getTodos: [Todo!]!
   # myTodos: [Todo!]!
 
   # searchTodos(input: TodoSearch!): [Todo!]!
 
-  # user(id: ID!): User!
+  getUser(id: ID!): User!
   # users: [User!]!
 }
 
