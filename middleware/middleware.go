@@ -13,31 +13,19 @@ import (
 	"github.com/Chlor87/graphql/repo"
 )
 
-type ctxKey int
-
-const (
-	userKey ctxKey = iota
-	userLoaderKey
-)
-
-func fail(w http.ResponseWriter, err error) {
-	log.Println(err)
-	http.Error(w, err.Error(), http.StatusInternalServerError)
-}
-
-func Build(fns ...func(http.Handler) http.Handler) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		for i := len(fns) - 1; i >= 0; i-- {
-			next = fns[i](next)
-		}
-		return next
-	}
+func Log(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		next.ServeHTTP(w, r)
+		log.Printf("%s %s %s %v\n",
+			r.Method, r.RemoteAddr, r.URL, time.Now().Sub(start))
+	})
 }
 
 func AddUser(userRepo *repo.Repo[model.User]) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			u, err := userRepo.Get(4)
+			u, err := userRepo.Get(1)
 			if err != nil {
 				fail(w, err)
 				return
@@ -53,7 +41,7 @@ func AddUserLoader(userRepo *repo.Repo[model.User]) func(http.Handler) http.Hand
 			userLoader := loaders.NewUserLoader(loaders.UserLoaderConfig{
 				MaxBatch: 100,
 				Wait:     1 * time.Millisecond,
-				Fetch: func(keys []int) ([]*model.User, []error) {
+				Fetch: func(keys []model.ID) ([]*model.User, []error) {
 					var tmp []*model.User
 					err := userRepo.DB.Where("id in (?)", keys).Find(&tmp).Error
 					if err != nil {
@@ -66,10 +54,10 @@ func AddUserLoader(userRepo *repo.Repo[model.User]) func(http.Handler) http.Hand
 						m[int(u.ID)] = u
 					}
 
-					res := make([]*model.User, len(m))
+					res := make([]*model.User, len(keys))
 
 					for i, id := range keys {
-						res[i] = m[id]
+						res[i] = m[int(id)]
 					}
 
 					return res, nil

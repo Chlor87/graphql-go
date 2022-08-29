@@ -36,7 +36,7 @@ func (r *Repo[T]) List() (res []*T, err error) {
 	return
 }
 
-func (r *Repo[T]) Update(id int, update *T) (*T, error) {
+func (r *Repo[T]) Update(id model.ID, update *T) (*T, error) {
 	var t T
 	tx := r.DB.Model(&t).
 		Where("id = ?", id).
@@ -49,5 +49,23 @@ func (r *Repo[T]) Update(id int, update *T) (*T, error) {
 	if tx.RowsAffected == 0 {
 		return nil, gorm.ErrRecordNotFound
 	}
+	return &t, nil
+}
+
+func (r *Repo[T]) Delete(id model.ID) (*T, error) {
+	var t T
+	tx := r.DB.
+		Clauses(clause.Returning{}).
+		Where("id = ?", id).
+		Delete(&t)
+
+	if tx.Error != nil {
+		return nil, tx.Error
+	}
+
+	if tx.RowsAffected == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+
 	return &t, nil
 }

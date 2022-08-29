@@ -2,7 +2,6 @@ package model
 
 import (
 	"encoding/json"
-	"strconv"
 )
 
 type ID int
@@ -14,13 +13,14 @@ func (ID) ImplementsGraphQLType(name string) bool {
 func (id *ID) UnmarshalGraphQL(input any) error {
 	switch t := input.(type) {
 	case int32:
+		// from query arg
 		*id = ID(int(t))
-	case string:
-		v, err := strconv.Atoi(t)
-		if err != nil {
-			return err
-		}
-		*id = ID(v)
+	case float64:
+		// from json parsing (golang thingy)
+		*id = ID(int(t))
+	case int:
+		// a normal ID
+		*id = ID(t)
 	}
 	return nil
 }

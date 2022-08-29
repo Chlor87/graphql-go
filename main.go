@@ -4,14 +4,15 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/graph-gophers/graphql-go"
 	"github.com/graph-gophers/graphql-go/relay"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
-	"github.com/Chlor87/graphql/model"
-	"github.com/Chlor87/graphql/repo"
+	"github.com/Chlor87/graphql/domain"
+	mw "github.com/Chlor87/graphql/middleware"
 	"github.com/Chlor87/graphql/resolvers"
 	"github.com/Chlor87/graphql/util"
 )
@@ -22,28 +23,28 @@ const (
 )
 
 var (
-	db     *gorm.DB
 	schema *graphql.Schema
+	d      *domain.Domain
 )
 
 func init() {
 	var err error
-	db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+		// uncomment to enable ORM logger
 		// Logger: logger.Default.LogMode(logger.Info),
 	})
 	check(err)
-	s, err := util.LoadSchema("./graph")
+	s, err := util.LoadSchema("./graphql")
+
+	time.Sleep(time.Second)
 	check(err)
 
-	todoRepo, err := repo.New[model.Todo](db)
-	check(err)
-
-	userRepo, err := repo.New[model.User](db)
+	d, err = domain.New(db)
 	check(err)
 
 	schema = graphql.MustParseSchema(
 		s,
-		resolvers.NewRoot(todoRepo, userRepo),
+		resolvers.NewRoot(d),
 		graphql.UseFieldResolvers(),
 	)
 	check(err)
@@ -55,10 +56,22 @@ func main() {
 		port = defaultPort
 	}
 
-	http.Handle("/query", &relay.Handler{Schema: schema})
+	mws := mw.Build(
+		mw.Log,
+		mw.AddUser(d.User),
+		mw.AddUserLoader(d.User),
+	)
+
+	// serve graphiql at root
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "./public/index.html")
+	})
+
+	// graphql entrypoint
+	http.Handle("/query", mws(&relay.Handler{Schema: schema}))
 
 	log.Printf("starting http service on :%s\n", port)
-	log.Fatalln(http.ListenAndServe(":"+port, nil))
+	log.Fatalln(http.ListenAndServe("localhost:"+port, nil))
 
 }
 

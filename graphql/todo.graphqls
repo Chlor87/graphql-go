@@ -8,7 +8,7 @@ type Todo {
   done: Boolean!
   createdAt: Time!
   updatedAt: Time!
-  # deletedAt: Time
+  deletedAt: Time
   updatedBy: User!
 }
 
